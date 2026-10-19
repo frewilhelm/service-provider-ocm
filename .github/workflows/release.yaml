@@ -6,13 +6,14 @@ on:
       - main
 
 permissions:
-  contents: write # we need this to be able to push tags
-  pull-requests: read
+  contents: read
 
 jobs:
   release_tag:
     name: Release version
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # push tags
     environment:
       name: automation
       deployment: false
@@ -113,6 +114,9 @@ jobs:
     name: Dev version PR
     needs: release_tag
     if: ${{ needs.release_tag.outputs.skip != 'true' }}
+    permissions:
+      contents: write
+      pull-requests: write
     uses: ./.github/workflows/release-dev-version-pr.yaml
     secrets: inherit
     with:

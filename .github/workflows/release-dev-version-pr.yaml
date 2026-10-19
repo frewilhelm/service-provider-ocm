@@ -17,13 +17,15 @@ on:
         type: string
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   create-dev-pr:
     name: Pull Request
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
     environment:
       name: automation
       deployment: false
@@ -53,8 +55,10 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Change to dev VERSION
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${{ inputs.version }}"
+          VERSION="$INPUT_VERSION"
           if [[ -z "$VERSION" ]]; then
             VERSION=$(task version)
           fi
