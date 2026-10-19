@@ -19,6 +19,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: dev-version-pr
+  cancel-in-progress: false
+
 jobs:
   create-dev-pr:
     name: Pull Request
@@ -62,8 +66,12 @@ jobs:
           if [[ -z "$VERSION" ]]; then
             VERSION=$(task version)
           fi
-          VERSION="${VERSION%-dev*}"
-          task release:set-version --verbose -- "${VERSION}-dev"
+          VERSION="${VERSION%%-dev*}-dev"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev$ ]]; then
+            echo "Refusing to run: computed version '$VERSION' is not a valid -dev version"
+            exit 1
+          fi
+          task release:set-version --verbose -- "$VERSION"
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
