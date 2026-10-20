@@ -1,0 +1,95 @@
+name: Dev Version PR
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Released version (e.g. v1.2.3). The branch is bumped to <version>-dev."
+        required: false
+        default: ""
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released version (e.g. v1.2.3). Leave empty to derive from the current VERSION."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-version-pr
+  cancel-in-progress: false
+
+jobs:
+  create-dev-pr:
+    name: Pull Request
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    environment:
+      name: automation
+      deployment: false
+    steps:
+      - name: Create GitHub App token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        id: app-token
+        with:
+          app-id: ${{ secrets.OCMBOT_APP_ID }}
+          private-key: ${{ secrets.OCMBOT_PRIV_KEY }}
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          submodules: recursive
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install Task
+        uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Change to dev VERSION
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="$INPUT_VERSION"
+          if [[ -z "$VERSION" ]]; then
+            VERSION=$(task version)
+          fi
+          VERSION="${VERSION%%-dev*}-dev"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-dev$ ]]; then
+            echo "Refusing to run: computed version '$VERSION' is not a valid -dev version"
+            exit 1
+          fi
+          task release:set-version --verbose -- "$VERSION"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          title: "chore(release): change to dev version"
+          commit-message: "chore(release): change to dev version"
+          branch: "chore/dev-version"
+          delete-branch: true
+          sign-commits: true
+          add-paths: |
+            VERSION
+          body: |
+            **What this PR does / why we need it**:
+
+            Update service provider OCM Version to "-dev" again.
+
+            **Release note**:
+            ```other operator
+            NONE
+            ```
