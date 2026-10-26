@@ -437,7 +437,7 @@ func createOciRepository(chartURL, secretName, chartVersion, namespace string) *
 			Namespace: namespace,
 		},
 		Spec: sourcev1.OCIRepositorySpec{
-			Interval:  metav1.Duration{Duration: time.Minute},
+			Interval:  &metav1.Duration{Duration: time.Minute},
 			URL:       chartURL,
 			SecretRef: secretRef,
 			Reference: &sourcev1.OCIRepositoryRef{
