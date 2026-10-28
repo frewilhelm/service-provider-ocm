@@ -37,5 +37,11 @@ jobs:
       - name: task validate
         run: task validate --verbose
 
+      # ubuntu-26.04 no longer applies the image's /etc/sysctl.conf, so kind's inotify limits fall back to defaults.
+      - name: Raise inotify limits for kind
+        run: |
+          sudo sysctl -w fs.inotify.max_user_instances=1280
+          sudo sysctl -w fs.inotify.max_user_watches=655360
+
       - name: Running Test e2e
         run: task test-e2e
