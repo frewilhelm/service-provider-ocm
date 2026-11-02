@@ -43,8 +43,7 @@ jobs:
         run: echo "RENOVATE_DRY_RUN=extract" >> $GITHUB_ENV
       - name: Override Renovate schedule (manual run)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.ignore_schedule == true }}
-        run: echo "RENOVATE_FORCE_SCHEDULE_SKIP=true" >> $GITHUB_ENV
-
+        run: echo 'RENOVATE_FORCE={"schedule":null}' >> $GITHUB_ENV
 
       - name: Run Renovate
         uses: renovatebot/github-action@1c0cf989c02653fba0efe7ca5772338860ca71dc # v46.3.12

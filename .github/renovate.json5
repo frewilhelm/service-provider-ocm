@@ -123,6 +123,14 @@
       matchCategories: [
         'golang',
       ],
+      // Exclude packages already captured by the specific Go-module groups
+      // above, otherwise this later rule's groupName would override theirs
+      // (groupName is a non-mergeable string) and collapse those groups.
+      matchPackageNames: [
+        '!k8s.io/{/,}**',
+        '!sigs.k8s.io/{/,}**',
+        '!github.com/open-component-model/{/,}**',
+      ],
     },
 
     // Docker/OCI images that are not already handled by a specific rule go
