@@ -1,8 +1,13 @@
 name: Renovate
 on:
   schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch: {}
+    - cron: '0 3 * * 0'  # Sundays at 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      ignore_schedule:
+        description: 'Run now, ignoring the Sunday schedule defined in renovate.json5'
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -36,6 +41,9 @@ jobs:
       - name: Ensure Dry-Run on Pull Requests
         if: ${{ github.event_name == 'pull_request' }}
         run: echo "RENOVATE_DRY_RUN=extract" >> $GITHUB_ENV
+      - name: Override Renovate schedule (manual run)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.ignore_schedule == true }}
+        run: echo 'RENOVATE_FORCE={"schedule":null}' >> $GITHUB_ENV
 
       - name: Run Renovate
         uses: renovatebot/github-action@1c0cf989c02653fba0efe7ca5772338860ca71dc # v46.3.12

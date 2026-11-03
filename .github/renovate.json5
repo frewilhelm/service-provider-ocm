@@ -1,14 +1,16 @@
 {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  // Only open/update PRs on Sundays to batch dependency noise to one day per week.
+  schedule: ['on sunday'],
+
   extends: [
     'config:recommended',
     'config:best-practices',
     'security:openssf-scorecard',
     'helpers:pinGitHubActionDigests',
     ':rebaseStalePrs',
+    ':dependencyDashboard',
   ],
-
-  // Keep the hack/common submodule (openmcp-project/build) up to date.
   'git-submodules': {
     enabled: true,
   },
@@ -19,9 +21,25 @@
     'hack/common/**',
   ],
 
-  // Default: do not auto-merge. Individual rules below opt in for low-risk updates.
-  automerge: false,
+  // Bake-time before a release is considered: avoids chasing yanked or
+  // quickly-patched releases. Security alerts bypass this gate (see below).
+  minimumReleaseAge: '7 days',
+
+  branchPrefix: 'renovate/',
+  prConcurrentLimit: 5,
+  prHourlyLimit: 0,
+
+  // Auto-merge everything by default once CI + branch protection pass.
+  // Major updates open PRs but stay manual-merge (packageRule below).
+  automerge: true,
   automergeType: 'pr',
+
+  // Security fixes bypass the release-age bake time but still require a human
+  // merge — they must never auto-merge.
+  vulnerabilityAlerts: {
+    minimumReleaseAge: null,
+    automerge: false,
+  },
 
   // Create separate PRs for minor vs. patch bumps so they can be reviewed and
   // merged independently (e.g. a patch security fix is not blocked by a minor
@@ -29,16 +47,14 @@
   separateMinorPatch: true,
 
   packageRules: [
-    // ── Auto-merge policy ────────────────────────────────────────────────
-    // Minor and patch updates are auto-merged after CI passes.
-    // Major updates are left open for manual review because they may
-    // contain breaking changes.
+    // ── Major updates ────────────────────────────────────────────────────
+    // Majors may contain breaking changes: open a PR so they are visible in
+    // the PR list, but never auto-merge — they get reviewed and merged by hand.
     {
       matchUpdateTypes: [
-        'minor',
-        'patch',
+        'major',
       ],
-      automerge: true,
+      automerge: false,
     },
 
     // ── Go module hygiene ────────────────────────────────────────────────
@@ -98,6 +114,32 @@
         'github-actions',
       ],
       groupName: 'GitHub Actions',
+    },
+
+    // All remaining Go modules not matched by a more-specific rule above go
+    // into one PR so stray transitive bumps don't create individual noise PRs.
+    {
+      groupName: 'Go modules',
+      matchCategories: [
+        'golang',
+      ],
+      // Exclude packages already captured by the specific Go-module groups
+      // above, otherwise this later rule's groupName would override theirs
+      // (groupName is a non-mergeable string) and collapse those groups.
+      matchPackageNames: [
+        '!k8s.io/{/,}**',
+        '!sigs.k8s.io/{/,}**',
+        '!github.com/open-component-model/{/,}**',
+      ],
+    },
+
+    // Docker/OCI images that are not already handled by a specific rule go
+    // into one PR, keeping image-digest churn consolidated.
+    {
+      groupName: 'Docker images',
+      matchDatasources: [
+        'docker',
+      ],
     },
   ],
 
