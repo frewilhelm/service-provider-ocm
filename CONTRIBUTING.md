@@ -8,12 +8,13 @@ This document covers repository-specific setup and development workflows.
 
 ## Prerequisites
 
-- **Go 1.26+**
+- **Go 1.27+**
 - **[Task](https://taskfile.dev/) v3.x** - runs all build, test, and lint commands
 - **Docker** - required for image builds and E2E tests
-- **[Flux CLI](https://fluxcd.io/flux/installation/)** - required for E2E tests
+- **[Flux CLI](https://fluxcd.io/flux/installation/)** - required for E2E tests (`test/e2e/main_test.go` runs `flux install`)
 - **kubectl** - cluster interaction
 - **[Kind](https://kind.sigs.k8s.io/)** - local cluster provisioning for E2E tests
+- **[ocpctl](https://github.com/openmcp-project/ocpctl)** - local openMCP environment (see below)
 
 ## Getting Started
 
@@ -31,9 +32,9 @@ git submodule update --init --recursive
 ```text
 .
 ├── api/v1alpha1/          # CRD type definitions (OCM, ProviderConfig)
+├── api/crds/              # Generated CRD manifests
 ├── cmd/                   # Controller entrypoint
 ├── internal/controller/   # Reconciler implementations
-├── pkg/runtime/           # Shared service-provider runtime utilities
 ├── test/e2e/              # End-to-end tests
 ├── hack/common/           # Shared build toolchain (git submodule -> openmcp-project/build)
 ├── Taskfile.yaml          # Project-specific task definitions
@@ -74,19 +75,20 @@ the repo-specific workflow after you have your local branch ready.
 
 ### Pull Request Requirements
 
-PR descriptions **must** include the following sections (enforced by CI via
-[validate-pr-content](https://github.com/openmcp-project/build/blob/main/.github/workflows/validate-pr-content.lib.yaml)):
+Use the [pull request template](.github/pull_request_template.md). CI ([Validate Pull Request Content](.github/workflows/validate-pr-content.yaml), backed by [validate-pr-content.lib.yaml](https://github.com/openmcp-project/build/blob/main/.github/workflows/validate-pr-content.lib.yaml)) rejects PRs whose description lacks the `**What this PR does / why we need it**:` section. Fill in the **Release note** block as well; use `NONE` if no release note is needed.
 
 ~~~markdown
 **What this PR does / why we need it**:
 
-<your description>
-
 **Release note**:
-```other operator
-<release note or NONE>
+```<category> <target_group>
+
 ```
 ~~~
+
+Allowed values:
+- `category`: `breaking|feature|bugfix|doc|other`
+- `target_group`: `user|operator|developer|dependency`
 
 For additional requirements (conventional commits, DCO, commit signing, squash merging), see
 the [OCM Contributing Guide](https://ocm.software/community/contributing/).
@@ -97,87 +99,71 @@ The E2E tests use [sigs.k8s.io/e2e-framework](https://github.com/kubernetes-sigs
 and:
 
 1. Build a container image for the controller
-2. Bootstrap a local kind cluster with Flux and the openMCP operator
+2. Bootstrap a local kind cluster with the openMCP operator and cluster-provider-kind (via [openmcp-testing](https://github.com/openmcp-project/openmcp-testing)), then install Flux
 3. Deploy the service provider and verify reconciliation
 
 ## Local Development with openMCP
 
-To test the service provider in a full openMCP environment, use the
-[cluster-provider-kind](https://github.com/openmcp-project/cluster-provider-kind) local
-development setup. See the
-[Development section](https://github.com/openmcp-project/cluster-provider-kind#quick-setup-with-local-development-script)
-of its README for full details.
+To test the service provider in a full openMCP environment, use [ocpctl](https://github.com/openmcp-project/ocpctl). It creates a kind platform cluster named `<env>-platform` and deploys the openMCP operator, cluster-provider-kind, Flux and a default set of service providers (including a released `ocm` image) — see its [defaults](https://github.com/openmcp-project/ocpctl/blob/main/pkg/config/environment-defaults.yaml). A config file overrides entries by name; other default service providers cannot be removed and keep running.
 
-### 1. Bootstrap the Platform
+### 1. Install ocpctl
 
 ```bash
-# Clone the cluster-provider-kind repository
-git clone https://github.com/openmcp-project/cluster-provider-kind.git
-cd cluster-provider-kind
-
-# Deploy a full openMCP local environment (KinD cluster + operator + service providers + Flux)
-# Skip other service providers for faster iteration if you only need OCM:
-DEPLOY_SP_CROSSPLANE=false DEPLOY_SP_LANDSCAPER=false ./hack/local-dev.sh deploy
+go install github.com/openmcp-project/ocpctl@latest
 ```
 
-### 2. Access the Platform Cluster
+### 2. Create the environment
 
 ```bash
-# Get a kubeconfig for the platform cluster (written to a temporary file)
-./hack/local-dev.sh access-platform-cluster
+ocpctl env apply ocm-dev
 ```
 
-To access other clusters (e.g. `onboarding`, `mcp` clusters):
+This creates the `ocm-dev-platform` kind cluster (needed for image loading in the next step).
+
+### 3. Build and load the image
+
+In this repo:
 
 ```bash
-kind get clusters
-kind get kubeconfig --name <cluster-name> > <cluster-name>.kubeconfig
+VERSION_OVERRIDE=local task build:img:build
+# produces ghcr.io/open-component-model/images/service-provider-ocm:local-linux-<arch>  (arch: amd64 or arm64)
+kind load docker-image ghcr.io/open-component-model/images/service-provider-ocm:local-linux-<arch> --name ocm-dev-platform
 ```
 
-### 3. Build and Load the Service Provider Image
+(`VERSION_OVERRIDE` is honored by `hack/common/get-version.sh`; `-linux-<arch>` suffix matches our `Taskfile.yaml` `build:img:build-test` tag pattern.)
 
-```bash
-# Back in the service-provider-ocm directory
-cd /path/to/service-provider-ocm
+### 4. Point the `ocm` service provider at the local image
 
-# Build the container image for your local platform
-task build:img:build
-```
-
-Make sure to note the image tag printed by the build task (e.g.
-`ghcr.io/open-component-model/images/service-provider-ocm:v0.1.2-dev-abc123-platform-arch`).
-Then load that image into the `platform` cluster:
-
-```bash
-# Load the image into the platform cluster (or push to a registry accessible by the cluster)
-kind load docker-image --name platform ghcr.io/open-component-model/images/service-provider-ocm:<version>
-```
-
-### 4. Install the Service Provider
-
-Install the service provider on the `platform` cluster by creating a `ServiceProvider` custom resource that points to
-the image you just built and loaded.
-
-```bash
-cat <<EOF > service-provider.yaml
-apiVersion: open-control-plane.io/v1alpha1
-kind: ServiceProvider
-metadata:
-  name: ocm
+```yaml
+# env.yaml
+apiVersion: ocpctl.open-control-plane.io/v1alpha1
+kind: Environment
 spec:
-  image: ghcr.io/open-component-model/images/service-provider-ocm:<version>
-EOF
+  serviceProviders:
+    - name: ocm
+      image: ghcr.io/open-component-model/images/service-provider-ocm:local-linux-<arch>
 ```
-
-Then, apply the manifest on the `platform` cluster:
 
 ```bash
-kubectl create -f service-provider.yaml
+ocpctl env apply ocm-dev --config env.yaml
 ```
 
-### 5. Deploy the ProviderConfig and Create an Instance
+### 5. Access clusters
 
-When the service provider is ready, you can create the OCM `ProviderConfig`.
+```bash
+# List the openMCP Cluster names for the environment
+ocpctl clusters list
+
+# Merge a kubeconfig into $KUBECONFIG / ~/.kube/config
+ocpctl clusters kubeconfig export --environment ocm-dev --name <cluster-name>
+
+# Or write a standalone kubeconfig file
+ocpctl clusters kubeconfig get --environment ocm-dev --name <cluster-name> > <cluster-name>.kubeconfig
+```
+
+### 6. Create the ProviderConfig
+
+Apply on the platform cluster:
 
 ```bash
 cat <<EOF > provider-config.yaml
@@ -188,65 +174,69 @@ metadata:
 spec:
   pollInterval: 1m
   versions:
-    - version: v0.12.0
-      chartVersion: "0.12.0"
+    - version: v0.22.1
+      chartVersion: "0.22.1"
       chartURL: oci://ghcr.io/open-component-model/kubernetes/controller/chart
 EOF
+kubectl apply -f provider-config.yaml
 ```
 
-Create it on the `platform` cluster:
+### 7. Create a ControlPlane
 
-```bash
-kubectl create -f provider-config.yaml
+Apply on the onboarding cluster:
+
+```yaml
+apiVersion: core.open-control-plane.io/v2alpha1
+kind: ControlPlane
+metadata:
+  name: test-mcp
+  namespace: default
+spec:
+  iam: {}
 ```
 
-When the `ProviderConfig` is ready, you can create an `OCM` instance.
+Wait until `kubectl get controlplanes -n default` shows phase `Ready`.
+
+### 8. Create the OCM instance
+
+Apply on the onboarding cluster:
 
 ```bash
 cat <<EOF > ocm-instance.yaml
 apiVersion: ocm.services.open-control-plane.io/v1alpha1
 kind: OCM
 metadata:
-  name: test # must match your MCP cluster name; KUBECONFIG=<onboarding cluster kubeconfig> kubectl get mcpv2
+  name: test-mcp        # must match the ControlPlane name (kubectl get controlplanes)
+  namespace: default
 spec:
-  version: v0.12.0 # must be one of the versions offered by the ProviderConfig above
+  version: v0.22.1
 EOF
+kubectl apply -f ocm-instance.yaml
 ```
 
-Create it on the `onboarding` cluster:
+### 9. Verify
 
-```bash
-kubectl create -f ocm-instance.yaml
-```
-
-### 6. Verify the MCP has the OCM K8s toolkit deployed
-
-To verify that the service provider is working end-to-end, check that the `ocm-k8s-toolkit-system` namespace
-is created and the OCM K8s toolkit is running. Run on the `mcp` cluster:
+On the MCP cluster (pick it from `ocpctl clusters list`):
 
 ```bash
 kubectl get pods -n ocm-k8s-toolkit-system
 ```
 
-### 7. Reset the Environment
+### 10. Tear down
 
 ```bash
-cd /path/to/cluster-provider-kind
-./hack/local-dev.sh reset
+ocpctl env delete ocm-dev
 ```
-
-For the full service provider development lifecycle, see the
-[Service Provider Development Guide](https://openmcp-project.github.io/docs/developers/serviceprovider/service-providers).
 
 ## Further Reading
 
-- [Service Provider Development Guide](https://openmcp-project.github.io/docs/developers/serviceprovider/service-providers) -
+- [Service Provider Development Guide](https://open-control-plane.io/developers/serviceprovider/service-providers) -
   design, development, testing, and deployment of openMCP service providers
-- [General Controller Guidelines](https://openmcp-project.github.io/docs/developers/general) -
+- [General Controller Guidelines](https://open-control-plane.io/developers/general) -
   operation annotations, status reporting, event filtering
-- [openMCP Documentation](https://openmcp-project.github.io/docs/) -
+- [openMCP Documentation](https://open-control-plane.io/) -
   full platform documentation
 - [openmcp-project/build](https://github.com/openmcp-project/build) -
   shared build toolchain (the `hack/common` submodule)
-- [cluster-provider-kind](https://github.com/openmcp-project/cluster-provider-kind) -
+- [ocpctl](https://github.com/openmcp-project/ocpctl) -
   local development environment for the openMCP platform

@@ -6,7 +6,6 @@ workload clusters via Flux HelmReleases.
 
 [![REUSE status](https://api.reuse.software/badge/github.com/open-component-model/service-provider-ocm)](https://api.reuse.software/info/github.com/open-component-model/service-provider-ocm)
 
-
 ## How It Works
 
 When an `OCM` resource is created on the onboarding cluster, the controller:
@@ -26,9 +25,10 @@ The domain service API. Created on the onboarding cluster, one per tenant.
 apiVersion: ocm.services.open-control-plane.io/v1alpha1
 kind: OCM
 metadata:
-  name: mcp-01 # must match your MCP cluster so it will track the right cluster
+  name: mcp-01 # must match the name of your ControlPlane (kubectl get controlplanes on the onboarding cluster)
+  namespace: default
 spec:
-  version: v0.12.0
+  version: v0.22.1
 ```
 
 | Field          | Type     | Required | Description                                                                                            |
@@ -40,8 +40,7 @@ version that is not on offer leaves the resource in phase `Progressing` with the
 set to `False`, reason `ReconcileError`, and the available versions listed in its message. Nothing
 progresses until the `OCM` resource or the `ProviderConfig` is corrected.
 
-_Note_: The name of the object _**MUST**_ match the name of your MCP cluster offering. This
-is to ensure that no multiple installations can exist for the same cluster.
+_Note_: The name of the object _**MUST**_ match the name of your ControlPlane (`kubectl get controlplanes` on the onboarding cluster), and it must live in the same namespace.
 
 ### ProviderConfig
 
@@ -97,7 +96,7 @@ of instances still requesting it, so remove a version only once no instance refe
 
 ## How the OCM K8s toolkit works
 
-Check out the [controller concept](https://ocm.software/docs/concepts/ocm-controllers/) and our guides, e.g.
+Check out the [Kubernetes Controllers concept](https://ocm.software/docs/concepts/kubernetes-controllers/) and our guides, e.g.
 [Deploy Helm Charts](https://ocm.software/docs/getting-started/deploy-helm-charts/).
 
 ## Running E2E Tests
@@ -106,15 +105,20 @@ Check out the [controller concept](https://ocm.software/docs/concepts/ocm-contro
 task test-e2e
 ```
 
-## Contributing
+## Support, Feedback, Contributing
 
-Please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) for information on how to set up your
-development environment, run tests, and submit pull requests.
+This project is open to feature requests/suggestions, bug reports etc. via [GitHub issues](https://github.com/open-component-model/service-provider-ocm/issues). Contribution and feedback are encouraged and always welcome. For more information about how to contribute, the project structure, as well as additional contribution information, see our [Contribution Guidelines](CONTRIBUTING.md).
 
 For the general OCM contribution process, see the
 [OCM Contributing Guide](https://ocm.software/community/contributing/).
 
-OCM follows the [Linux Foundation EU Code of Conduct](https://linuxfoundation.eu/policies/code-of-conduct).
+## Security / Disclosure
+
+If you find any bug that may be a security problem, please follow the instructions in our [security policy](https://github.com/open-component-model/service-provider-ocm/security/policy) on how to report it. Please do not create GitHub issues for security-related doubts or problems.
+
+## Code of Conduct
+
+We as members, contributors, and leaders pledge to make participation in our community a harassment-free experience for everyone. By participating in this project, you agree to abide by the [Linux Foundation EU Code of Conduct](https://linuxfoundation.eu/policies/code-of-conduct).
 
 ## Licensing
 
