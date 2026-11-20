@@ -79,7 +79,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           title: "chore(release): change to dev version"
           commit-message: "chore(release): change to dev version"
-          branch: "chore/dev-version"
+          branch: "automation/dev-version"
           delete-branch: true
           sign-commits: true
           add-paths: |
