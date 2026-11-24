@@ -170,7 +170,7 @@ jobs:
 
   dev_version_pr:
     name: Dev version PR
-    needs: [check, release_tag]
+    needs: release_tag
     permissions:
       contents: read
     uses: ./.github/workflows/release-dev-version-pr.yaml
@@ -179,5 +179,3 @@ jobs:
     secrets:
       PR_BOT_CLIENT_ID: ${{ secrets.PR_BOT_CLIENT_ID }}
       PR_BOT_PRIVATE_KEY: ${{ secrets.PR_BOT_PRIVATE_KEY }}
-    with:
-      version: ${{ needs.check.outputs.version }}
